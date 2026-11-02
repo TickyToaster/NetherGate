@@ -18,7 +18,8 @@ const CHALLENGE_TTL_MS: i64 = 120_000;
 #[serde(rename_all = "camelCase")]
 pub struct RegisterRequest {
     pub protocol: String,
-    pub public_key_jwk: Value,
+    #[serde(default)]
+    pub public_key_jwk: Option<Value>,
     #[serde(default)]
     pub label: Option<String>,
     #[serde(default)]
@@ -41,50 +42,78 @@ pub async fn register(
 ) -> Result<Json<Value>, ProviderError> {
     let request: RegisterRequest = parse_body(&body, "register")?;
     validate_protocol(&request.protocol)?;
-    if request.public_key_jwk.get("d").is_some() {
-        return Err(ProviderError::InvalidRequest(
-            "publicKeyJwk must not contain d".to_owned(),
-        ));
-    }
-    let jwk = PublicJwk::from_json(&request.public_key_jwk)
-        .map_err(|_| ProviderError::InvalidRequest("invalid publicKeyJwk".to_owned()))?;
-    let thumbprint = jwk
-        .thumbprint_b64url()
-        .map_err(|_| ProviderError::InvalidRequest("invalid publicKeyJwk".to_owned()))?;
+
+    let provided_jwk = match request.public_key_jwk.as_ref() {
+        Some(value) => {
+            if value.get("d").is_some() {
+                return Err(ProviderError::InvalidRequest(
+                    "publicKeyJwk must not contain d".to_owned(),
+                ));
+            }
+            let jwk = PublicJwk::from_json(value)
+                .map_err(|_| ProviderError::InvalidRequest("invalid publicKeyJwk".to_owned()))?;
+            let thumbprint = jwk
+                .thumbprint_b64url()
+                .map_err(|_| ProviderError::InvalidRequest("invalid publicKeyJwk".to_owned()))?;
+            let text = serde_json::to_string(value)
+                .map_err(|error| ProviderError::Internal(error.into()))?;
+            Some((thumbprint, text))
+        }
+        None => None,
+    };
 
     let now = now_ms();
     let expires_at = now + CHALLENGE_TTL_MS;
-    let (mode, label, service_id, registration_id, instance_id, pow_difficulty) =
-        if let Some(reference) = request.registration_id.as_deref() {
-            let instance = recoverable_instance(&state, reference)?;
-            let stored =
-                PublicJwk::from_json(&serde_json::from_str(&instance.public_jwk).map_err(
-                    |_| ProviderError::Internal(anyhow::anyhow!("stored JWK is invalid")),
-                )?)
-                .map_err(|_| ProviderError::Internal(anyhow::anyhow!("stored JWK is invalid")))?;
-            if stored.thumbprint_b64url().ok().as_deref() != Some(thumbprint.as_str()) {
-                return Err(ProviderError::RecoveryUnavailable);
-            }
-            (
-                "recover",
-                instance.label.unwrap_or_default(),
-                instance.service_id.unwrap_or_default(),
-                instance.registration_id,
-                Some(instance.instance_id),
-                0,
-            )
-        } else {
-            let label = request.label.unwrap_or_default();
-            validate_label(&label)?;
-            (
-                "new-service",
-                label,
-                String::new(),
-                String::new(),
-                None,
-                state.config.pow_difficulty,
-            )
-        };
+    let (
+        mode,
+        label,
+        service_id,
+        registration_id,
+        instance_id,
+        pow_difficulty,
+        thumbprint,
+        public_jwk_text,
+    ) = if let Some(reference) = request.registration_id.as_deref() {
+        let instance = recoverable_instance(&state, reference)?;
+        let stored = PublicJwk::from_json(
+            &serde_json::from_str(&instance.public_jwk)
+                .map_err(|_| ProviderError::Internal(anyhow::anyhow!("stored JWK is invalid")))?,
+        )
+        .map_err(|_| ProviderError::Internal(anyhow::anyhow!("stored JWK is invalid")))?;
+        let stored_thumbprint = stored
+            .thumbprint_b64url()
+            .map_err(|_| ProviderError::Internal(anyhow::anyhow!("stored JWK is invalid")))?;
+        if let Some((provided_thumbprint, _)) = &provided_jwk
+            && provided_thumbprint != &stored_thumbprint
+        {
+            return Err(ProviderError::RecoveryUnavailable);
+        }
+        (
+            "recover",
+            instance.label.unwrap_or_default(),
+            instance.service_id.unwrap_or_default(),
+            instance.registration_id,
+            Some(instance.instance_id),
+            0,
+            stored_thumbprint,
+            instance.public_jwk,
+        )
+    } else {
+        let (thumbprint, public_jwk_text) = provided_jwk
+            .ok_or_else(|| ProviderError::InvalidRequest("publicKeyJwk is required".to_owned()))?;
+        let label = request.label.unwrap_or_default();
+        validate_label(&label)?;
+        (
+            "new-service",
+            label,
+            String::new(),
+            String::new(),
+            None,
+            state.config.pow_difficulty,
+            thumbprint,
+            public_jwk_text,
+        )
+    };
 
     let challenge_id = random_id("challenge_");
     let nonce = random_nonce();
@@ -106,8 +135,7 @@ pub async fn register(
         nonce: nonce.clone(),
         audience: audience.clone(),
         thumbprint: thumbprint.clone(),
-        public_jwk: serde_json::to_string(&request.public_key_jwk)
-            .map_err(|error| ProviderError::Internal(error.into()))?,
+        public_jwk: public_jwk_text,
         context_json: serde_json::to_string(&context)
             .map_err(|error| ProviderError::Internal(error.into()))?,
         context_digest: b64url_encode(&digest),

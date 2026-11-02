@@ -148,7 +148,6 @@ async fn fake_host_registers_completes_and_recovers() {
         "/v1/nxs/register",
         &json!({
             "protocol": "nethernet-external-signaling-v1",
-            "publicKeyJwk": fixture["publicKeyJwk"],
             "registrationId": registration_id,
         }),
     )
@@ -196,7 +195,6 @@ async fn recovery_by_saved_challenge_id_and_wrong_key_rejection() {
         "/v1/nxs/register",
         &json!({
             "protocol": "nethernet-external-signaling-v1",
-            "publicKeyJwk": fixture["publicKeyJwk"],
             "registrationId": challenge_id,
         }),
     )
@@ -245,6 +243,21 @@ async fn rejects_insufficient_pow_and_bad_signature() {
     let (mut complete, _) = complete_request(&challenge, private_d, "intent_fixture_0005", true);
     complete["signature"] = json!("not-a-signature");
     let (status, body) = post(&app, "/v1/nxs/complete", &complete).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["code"], "invalid_request");
+}
+
+#[tokio::test]
+async fn new_registration_requires_public_key() {
+    let app = app(0);
+    let (status, body) = post(
+        &app,
+        "/v1/nxs/register",
+        &json!({
+            "protocol": "nethernet-external-signaling-v1",
+        }),
+    )
+    .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(body["code"], "invalid_request");
 }
