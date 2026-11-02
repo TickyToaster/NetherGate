@@ -1,8 +1,3 @@
-//! ECMA-262 `JSON.stringify`-compatible serialization for signed payloads.
-//!
-//! Do not use `serde_json` here. Signed payload layouts need exact string
-//! escaping, raw non-ASCII UTF-8 output, and integer formatting.
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     String(String),
@@ -29,50 +24,118 @@ impl From<u64> for Value {
 }
 
 pub fn stringify(value: &Value) -> String {
-    let mut output = String::new();
-    write_value(&mut output, value);
-    output
+    let mut temp = String::new();
+    let x = value;
+    if let Value::String(s) = x {
+        temp.push('"');
+        let mut i = 0;
+        let chars: Vec<char> = s.chars().collect();
+        while i < chars.len() {
+            let c = chars[i];
+            if c == '"' {
+                temp.push_str("\\\"");
+            } else if c == '\\' {
+                temp.push_str("\\\\");
+            } else if c == '\n' {
+                temp.push_str("\\n");
+            } else if c == '\r' {
+                temp.push_str("\\r");
+            } else if c == '\t' {
+                temp.push_str("\\t");
+            } else if c == '\u{8}' {
+                temp.push_str("\\b");
+            } else if c == '\u{c}' {
+                temp.push_str("\\f");
+            } else if (c as u32) < 32 {
+                let n = c as u32;
+                temp.push_str("\\u");
+                if n < 16 {
+                    temp.push_str("000");
+                } else if n < 256 {
+                    temp.push_str("00");
+                } else if n < 4096 {
+                    temp.push('0');
+                }
+                temp.push_str(&format!("{:x}", n));
+            } else {
+                temp.push(c);
+            }
+            i += 1;
+        }
+        temp.push('"');
+    } else if let Value::Unsigned(n) = x {
+        temp.push_str(&n.to_string());
+    } else if let Value::Array(a) = x {
+        temp.push('[');
+        let mut i = 0;
+        while i < a.len() {
+            if i > 0 {
+                temp.push(',');
+            }
+            let b = &a[i];
+            if let Value::String(s) = b {
+                temp.push('"');
+                let mut j = 0;
+                let chars: Vec<char> = s.chars().collect();
+                while j < chars.len() {
+                    let c = chars[j];
+                    if c == '"' {
+                        temp.push_str("\\\"");
+                    } else if c == '\\' {
+                        temp.push_str("\\\\");
+                    } else if c == '\n' {
+                        temp.push_str("\\n");
+                    } else if c == '\r' {
+                        temp.push_str("\\r");
+                    } else if c == '\t' {
+                        temp.push_str("\\t");
+                    } else if c == '\u{8}' {
+                        temp.push_str("\\b");
+                    } else if c == '\u{c}' {
+                        temp.push_str("\\f");
+                    } else if (c as u32) < 32 {
+                        let n = c as u32;
+                        temp.push_str("\\u");
+                        if n < 16 {
+                            temp.push_str("000");
+                        } else if n < 256 {
+                            temp.push_str("00");
+                        } else if n < 4096 {
+                            temp.push('0');
+                        }
+                        temp.push_str(&format!("{:x}", n));
+                    } else {
+                        temp.push(c);
+                    }
+                    j += 1;
+                }
+                temp.push('"');
+            } else if let Value::Unsigned(n) = b {
+                temp.push_str(&n.to_string());
+            } else if let Value::Array(c) = b {
+                temp.push_str(&join_array(c));
+            }
+            i += 1;
+        }
+        temp.push(']');
+    }
+    temp
 }
 
 pub fn join_array(parts: &[Value]) -> String {
-    stringify(&Value::Array(parts.to_vec()))
-}
-
-fn write_value(output: &mut String, value: &Value) {
-    match value {
-        Value::String(value) => write_string(output, value),
-        Value::Unsigned(value) => output.push_str(&value.to_string()),
-        Value::Array(values) => {
-            output.push('[');
-            for (index, value) in values.iter().enumerate() {
-                if index > 0 {
-                    output.push(',');
-                }
-                write_value(output, value);
-            }
-            output.push(']');
+    let mut x = String::new();
+    x.push('[');
+    let mut i = 0;
+    while i < parts.len() {
+        if i > 0 {
+            x.push(',');
         }
+        let temp = &parts[i];
+        x.push_str(&stringify(temp));
+        i += 1;
     }
-}
-
-fn write_string(output: &mut String, value: &str) {
-    output.push('"');
-    for character in value.chars() {
-        match character {
-            '"' => output.push_str("\\\""),
-            '\\' => output.push_str("\\\\"),
-            '\u{0008}' => output.push_str("\\b"),
-            '\u{000c}' => output.push_str("\\f"),
-            '\n' => output.push_str("\\n"),
-            '\r' => output.push_str("\\r"),
-            '\t' => output.push_str("\\t"),
-            character if (character as u32) < 0x20 => {
-                output.push_str(&format!("\\u{:04x}", character as u32));
-            }
-            character => output.push(character),
-        }
-    }
-    output.push('"');
+    x.push(']');
+    x
 }
 
 #[cfg(test)]
