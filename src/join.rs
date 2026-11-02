@@ -82,6 +82,13 @@ pub async fn offer(
     let offer_text =
         std::str::from_utf8(&body).map_err(|_| JoinError::BadRequest("offer is not UTF-8"))?;
     let offer = parse_offer(offer_text, network_id)?;
+    tracing::info!(
+        setup = ?offer.setup,
+        fingerprints = offer.fingerprints.len(),
+        sctp_port = offer.sctp_port,
+        max_message_size = offer.max_message_size,
+        "join offer"
+    );
 
     let claimed_cpk = verify_client_identity(&offer)?;
     let host = state
@@ -100,6 +107,7 @@ struct Offer {
     max_message_size: u32,
     fingerprints: Vec<(String, String)>,
     identity: String,
+    setup: Option<String>,
     network_id: u64,
 }
 
@@ -110,6 +118,7 @@ fn parse_offer(sdp: &str, network_id: u64) -> Result<Offer, JoinError> {
     let mut max_message_size = 262_144u32;
     let mut fingerprints = Vec::new();
     let mut identity = None;
+    let mut setup = None;
 
     for line in sdp.split(['\r', '\n']) {
         if let Some(value) = line.strip_prefix("a=ice-ufrag:") {
@@ -129,6 +138,8 @@ fn parse_offer(sdp: &str, network_id: u64) -> Result<Offer, JoinError> {
                 .split_once(' ')
                 .ok_or(JoinError::BadRequest("invalid fingerprint"))?;
             fingerprints.push((algorithm.to_owned(), digest.to_owned()));
+        } else if let Some(value) = line.strip_prefix("a=setup:") {
+            setup.get_or_insert_with(|| value.to_owned());
         } else if let Some(value) = line.strip_prefix("a=identity:")
             && identity.replace(value.to_owned()).is_some()
         {
@@ -163,6 +174,7 @@ fn parse_offer(sdp: &str, network_id: u64) -> Result<Offer, JoinError> {
         max_message_size,
         fingerprints,
         identity,
+        setup,
         network_id,
     })
 }
@@ -392,6 +404,11 @@ fn synthesize_answer(
         )))?;
 
     let identity = server_identity(state, dtls_digest, now)?;
+    let answer_setup = match offer.setup.as_deref() {
+        Some("active") => "passive",
+        Some("passive") | Some("actpass") | None => "active",
+        Some(_) => return Err(JoinError::BadRequest("invalid setup role")),
+    };
 
     let mut lines = vec![
         "v=0".to_owned(),
@@ -406,7 +423,7 @@ fn synthesize_answer(
         format!("a=ice-pwd:{answer_pwd}"),
         "a=ice-options:trickle".to_owned(),
         format!("a=fingerprint:sha-256 {dtls_digest}"),
-        "a=setup:passive".to_owned(),
+        format!("a=setup:{answer_setup}"),
         "a=mid:0".to_owned(),
         format!("a=sctp-port:{sctp_port}"),
         format!("a=max-message-size:{max_message_size}"),

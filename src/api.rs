@@ -32,6 +32,7 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(health))
         .route("/.well-known/nethernet-external-signaling", get(discovery))
         .route("/v1/nxs/heartbeat", post(crate::heartbeat::heartbeat))
+        .route("/v1/nxs/outcomes", post(outcomes))
         .route("/v1/nxs/register", post(crate::registration::register))
         .route("/v1/nxs/complete", post(crate::registration::complete))
         .route("/v1/nxs/{operation}", post(operation))
@@ -60,6 +61,10 @@ async fn discovery(State(state): State<AppState>) -> Json<Value> {
         },
         "extensions": {}
     }))
+}
+
+async fn outcomes() -> Json<Value> {
+    Json(json!({}))
 }
 
 async fn operation(Path(operation): Path<String>) -> Result<Json<Value>, ProviderError> {

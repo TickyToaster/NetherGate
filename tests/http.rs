@@ -62,7 +62,7 @@ async fn known_operations_are_explicitly_unimplemented() {
     let (status, body) = send(
         Request::builder()
             .method("POST")
-            .uri("/v1/nxs/outcomes")
+            .uri("/v1/nxs/rotate")
             .body(Body::empty())
             .unwrap(),
     )

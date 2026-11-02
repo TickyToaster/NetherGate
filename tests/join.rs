@@ -339,6 +339,7 @@ async fn listing_and_synthesized_answer() {
         answer.contains("a=fingerprint:sha-256 AB:AB:AB"),
         "{answer}"
     );
+    assert!(answer.contains("a=setup:active"), "{answer}");
     assert!(answer.contains("a=sctp-port:5000"), "{answer}");
     assert!(answer.contains("a=max-message-size:262144"), "{answer}");
     assert!(
