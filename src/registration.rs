@@ -1,6 +1,8 @@
 use axum::Json;
+use axum::body::Bytes;
 use axum::extract::State;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::api::AppState;
@@ -35,8 +37,9 @@ pub struct CompleteRequest {
 
 pub async fn register(
     State(state): State<AppState>,
-    Json(request): Json<RegisterRequest>,
+    body: Bytes,
 ) -> Result<Json<Value>, ProviderError> {
+    let request: RegisterRequest = parse_body(&body, "register")?;
     validate_protocol(&request.protocol)?;
     if request.public_key_jwk.get("d").is_some() {
         return Err(ProviderError::InvalidRequest(
@@ -131,8 +134,9 @@ pub async fn register(
 
 pub async fn complete(
     State(state): State<AppState>,
-    Json(request): Json<CompleteRequest>,
+    body: Bytes,
 ) -> Result<Json<Value>, ProviderError> {
+    let request: CompleteRequest = parse_body(&body, "complete")?;
     validate_protocol(&request.protocol)?;
     validate_idempotency_key(&request.idempotency_key)?;
     if request.proof_nonce.chars().count() > 128 {
@@ -326,4 +330,12 @@ fn random_id(prefix: &str) -> String {
 fn random_nonce() -> String {
     let bytes: [u8; 12] = rand::random();
     b64url_encode(&bytes)
+}
+
+fn parse_body<T: DeserializeOwned>(body: &[u8], operation: &str) -> Result<T, ProviderError> {
+    serde_json::from_slice(body).map_err(|error| {
+        let preview: String = String::from_utf8_lossy(body).chars().take(1024).collect();
+        tracing::warn!(%operation, body = %preview, %error, "invalid request body");
+        ProviderError::InvalidRequest("invalid request body".to_owned())
+    })
 }

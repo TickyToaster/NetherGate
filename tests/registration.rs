@@ -78,12 +78,14 @@ fn complete_request(
     let (proof_nonce, payload) = if require_pow {
         solve_pow(difficulty, make_payload).expect("PoW is solvable")
     } else {
-        let nonce = "definitely-not-solved".to_owned();
-        let payload = make_payload(&nonce);
-        assert!(
-            !nxsd::proofs::verify_pow(payload.as_bytes(), difficulty),
-            "fixture nonce unexpectedly satisfies PoW"
-        );
+        let (nonce, payload) = (0u64..)
+            .map(|counter| {
+                let nonce = format!("unsolved-{counter}");
+                let payload = make_payload(&nonce);
+                (nonce, payload)
+            })
+            .find(|(_, payload)| !nxsd::proofs::verify_pow(payload.as_bytes(), difficulty))
+            .expect("some nonce fails PoW");
         (nonce, payload)
     };
 

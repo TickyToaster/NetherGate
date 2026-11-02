@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use axum::extract::{DefaultBodyLimit, Path, State};
+use axum::extract::{DefaultBodyLimit, Path, Request, State};
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{Value, json};
@@ -36,6 +38,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/join", get(crate::join::listing))
         .route("/v1/join/{network_id}", post(crate::join::offer))
         .layer(DefaultBodyLimit::max(65_536))
+        .layer(middleware::from_fn(log_request))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -65,4 +68,12 @@ async fn operation(Path(operation): Path<String>) -> Result<Json<Value>, Provide
         | "operator-action" => Err(ProviderError::NotImplemented),
         _ => Err(ProviderError::NotFound),
     }
+}
+
+async fn log_request(request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let response = next.run(request).await;
+    tracing::info!(%method, %uri, status = %response.status(), "request");
+    response
 }

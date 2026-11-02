@@ -1028,8 +1028,8 @@ impl Store {
                     MIN(listing_name),
                     MIN(listing_level),
                     MIN(listing_game_type),
-                    MIN(listing_protocol),
-                    MIN(listing_version)
+                    COALESCE(MIN(listing_protocol), 0),
+                    COALESCE(MIN(listing_version), '')
                  FROM leases
                  WHERE routable = 1 AND expires_at > ?1 AND listing_name IS NOT NULL
                  HAVING COUNT(*) > 0",

@@ -103,8 +103,11 @@ pub async fn heartbeat(
 ) -> Result<Json<Value>, ProviderError> {
     let authenticated = authenticate(&state, &method, &uri, &headers, &body)?;
 
-    let request: HeartbeatRequest = serde_json::from_slice(&body)
-        .map_err(|_| ProviderError::InvalidRequest("invalid heartbeat body".to_owned()))?;
+    let request: HeartbeatRequest = serde_json::from_slice(&body).map_err(|error| {
+        let preview: String = String::from_utf8_lossy(&body).chars().take(1024).collect();
+        tracing::warn!(body = %preview, %error, "invalid heartbeat body");
+        ProviderError::InvalidRequest("invalid heartbeat body".to_owned())
+    })?;
     validate_heartbeat(&request, authenticated.timestamp)?;
 
     let now = now_ms();

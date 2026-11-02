@@ -102,3 +102,28 @@ async fn join_offer_requires_a_network_id() {
 
     assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
 }
+
+#[tokio::test]
+async fn malformed_json_returns_spec_error_not_axum_422() {
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/nxs/register")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .expect("request succeeds");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("body collects")
+        .to_bytes();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).expect("json error body");
+    assert_eq!(body["code"], "invalid_request");
+}
