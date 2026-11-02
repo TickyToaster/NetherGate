@@ -1,0 +1,40 @@
+services:
+  nxsd:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    environment:
+      NXSD_LISTEN: 0.0.0.0:8080
+      NXSD_PUBLIC_ORIGIN: ${NXSD_PUBLIC_ORIGIN:-https://localhost}
+      NXSD_DATABASE_PATH: /var/lib/nxsd/nxsd.db
+      NXSD_LOG: ${NXSD_LOG:-nxsd=info}
+    volumes:
+      - nxsd-data:/var/lib/nxsd
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - nxsd
+    environment:
+      NXSD_SITE_ADDRESS: ${NXSD_SITE_ADDRESS:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - internal
+
+networks:
+  internal:
+
+volumes:
+  nxsd-data:
+  caddy-data:
+  caddy-config:

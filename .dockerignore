@@ -1,0 +1,11 @@
+target
+.git
+.github
+*.db
+*.db-wal
+*.db-shm
+config/nxsd.toml
+.env
+vendor
+tests
+docs

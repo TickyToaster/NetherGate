@@ -1,0 +1,13 @@
+# nxsd configuration example.
+# Copy to config/nxsd.toml (ignored) or point NXSD_CONFIG at a TOML file.
+#
+# Environment variables override values loaded from this file:
+#   NXSD_LISTEN, NXSD_PUBLIC_ORIGIN, NXSD_DATABASE_PATH, NXSD_LOG,
+#   NXSD_POW_DIFFICULTY
+
+listen = "127.0.0.1:8080"
+public_origin = "http://localhost:8080"
+database_path = "nxsd.db"
+log = "nxsd=info"
+# Proof-of-work difficulty for anonymous new-service registration, 0-24.
+pow_difficulty = 12

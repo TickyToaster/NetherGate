@@ -1,0 +1,8 @@
+{
+    email admin@localhost
+}
+
+{$NXSD_SITE_ADDRESS:localhost} {
+    reverse_proxy nxsd:8080
+    tls internal
+}
